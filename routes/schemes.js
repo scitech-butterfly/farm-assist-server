@@ -1,30 +1,43 @@
 const express = require('express');
 const Scheme = require('../models/Scheme');
-const fetch = require('node-fetch'); // optional if calling NLP
+const fetch = require('node-fetch');
 
 const router = express.Router();
 
-// list all schemes
+// ✅ List all schemes
 router.get('/', async (req, res) => {
-  const schemes = await Scheme.find().limit(200);
-  res.json(schemes);
+  try {
+    const schemes = await Scheme.find().limit(200);
+    res.json(schemes);
+  } catch (err) {
+    console.error("Error fetching schemes:", err);
+    res.status(500).json({ message: "Server error fetching schemes" });
+  }
 });
 
-// get single by id
+// ✅ Get a single scheme by ID
 router.get('/:id', async (req, res) => {
-  const s = await Scheme.findById(req.params.id);
-  if (!s) return res.status(404).json({ message: 'Not found' });
-  res.json(s);
+  try {
+    const scheme = await Scheme.findById(req.params.id);
+    if (!scheme) return res.status(404).json({ message: 'Scheme not found' });
+    res.json(scheme);
+  } catch (err) {
+    console.error("Error fetching scheme:", err);
+    res.status(500).json({ message: "Server error fetching scheme" });
+  }
 });
 
-// search: prefer NLP API (if configured), else text search
+// ✅ Search endpoint (supports NLP API or fallback MongoDB search)
 router.post('/search', async (req, res) => {
   const { query, crops } = req.body;
   const NLP = process.env.NLP_API;
+
+  // 1️⃣ If NLP API configured, use that
   if (NLP) {
     try {
       const response = await fetch(NLP, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, crops })
       });
       const data = await response.json();
@@ -34,13 +47,39 @@ router.post('/search', async (req, res) => {
       }
       if (data.schemes) return res.json(data.schemes);
     } catch (e) {
-      console.warn('NLP failed', e.message);
+      console.warn('NLP API failed:', e.message);
     }
   }
-  // fallback: Mongo text search
-  if (!query) return res.json([]);
-  const results = await Scheme.find({ $text: { $search: query } }).limit(50);
-  res.json(results);
+
+  // 2️⃣ Fallback: MongoDB regex search
+  if (query) {
+    try {
+      const regex = new RegExp(query, "i");
+      const schemes = await Scheme.find({
+        $or: [
+          { name: regex },
+          { description: regex },
+          { eligibility: regex },
+          { benefits: regex },
+          { faqs: regex },
+          { keywords: { $in: [regex] } }
+        ]
+      }).limit(100);
+      return res.json(schemes);
+    } catch (err) {
+      console.error("Regex search error:", err);
+      return res.status(500).json({ message: "Error searching schemes" });
+    }
+  }
+
+  // 3️⃣ Fallback: MongoDB full-text search (index-based)
+  try {
+    const results = await Scheme.find({ $text: { $search: query } }).limit(50);
+    res.json(results);
+  } catch (err) {
+    console.error("Text search error:", err);
+    res.status(500).json({ message: "Text search failed" });
+  }
 });
 
 module.exports = router;

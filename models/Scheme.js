@@ -1,19 +1,22 @@
 const mongoose = require('mongoose');
 
 const SchemeSchema = new mongoose.Schema({
-  code: { type: String, unique: true }, // e.g. 'pm-kisan'
-  title: { en: String, hi: String },
-  description: { en: String, hi: String },
-  keywords: [String],
-  eligibility: String,
+  name: { type: String, required: true },   // Scheme Name
+  link: { type: String },                   // Official link / portal
+  eligibility: { type: String },            // Who can apply
+  benefits: { type: String },               // Key benefits
+  description: { type: String },            // Overview
+  faqs: { type: String },                   // FAQ text (optional: can later be array)
+  keywords: [String]                        // Useful for searching
 }, { timestamps: true });
 
-// create text index for simple search
+// 🔍 Full-text search index
 SchemeSchema.index({
-  "title.en": "text",
-  "title.hi": "text",
-  "description.en": "text",
-  "description.hi": "text",
+  name: "text",
+  description: "text",
+  eligibility: "text",
+  benefits: "text",
+  faqs: "text",
   keywords: "text"
 });
 

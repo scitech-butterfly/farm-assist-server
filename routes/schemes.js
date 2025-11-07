@@ -27,57 +27,54 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ✅ Search endpoint (supports NLP API or fallback MongoDB search)
 router.post('/search', async (req, res) => {
   const { query } = req.body;
   const NLP = process.env.NLP_API;
 
+  // ✅ No query? return empty list
+  if (!query || !query.trim()) {
+    return res.json({ schemes: [] });
+  }
+
+  // ✅ Try NLP API first
   if (NLP) {
     try {
       const response = await fetch(NLP, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question : query })   // ✅ only query
+        body: JSON.stringify({ question: query })
       });
 
       const data = await response.json();
 
-      // Handle the response based on your FastAPI structure
+      // ✅ NLP FOUND EXACT SCHEME
       if (data.found && data.scheme_name) {
-        // Return the scheme data
         return res.json({
-          found: true,
-          scheme: {
-            name: data.scheme_name,
-            link: data.link,
-            eligibility: data.eligibility,
-            benefits: data.benefits,
-            description: data.description,
-            formatted_answer: data.formatted_answer
-          }
-        });
-      } else {
-        return res.json({
-          found: false,
-          message: data.formatted_answer || "योजना सापडली नाही"
+          schemes: [
+            {
+              name: data.scheme_name,
+              link: data.link,
+              eligibility: data.eligibility,
+              benefits: data.benefits,
+              description: data.description,
+              formatted_answer: data.formatted_answer
+            }
+          ]
         });
       }
 
-      if (data.schemeIds) {
-        const results = await Scheme.find({ _id: { $in: data.schemeIds } });
-        return res.json(results);
-      }
+      // ✅ NLP did not find a match → return empty list
+      return res.json({
+        schemes: [],
+        message: data.formatted_answer || "No matching scheme found."
+      });
 
-      if (data.schemes) return res.json(data.schemes);
-
-    } catch (e) {
-      console.warn('NLP failed', e.message);
+    } catch (err) {
+      console.warn("NLP failed:", err.message);
     }
   }
 
-  // ✅ fallback simple regex search
-  if (!query) return res.json([]);
-
+  // ✅ Fallback search in MongoDB
   try {
     const regex = new RegExp(query, "i");
     const schemes = await Scheme.find({
@@ -88,8 +85,10 @@ router.post('/search', async (req, res) => {
         { benefits: regex },
       ],
     });
+
     return res.json({ schemes });
   } catch (err) {
+    console.error("Fallback search error:", err);
     return res.status(500).json({ message: "Error searching schemes" });
   }
 });

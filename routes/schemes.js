@@ -37,10 +37,31 @@ router.post('/search', async (req, res) => {
       const response = await fetch(NLP, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })   // ✅ only query
+        body: JSON.stringify({ question : query })   // ✅ only query
       });
 
       const data = await response.json();
+
+      // Handle the response based on your FastAPI structure
+      if (data.found && data.scheme_name) {
+        // Return the scheme data
+        return res.json({
+          found: true,
+          scheme: {
+            name: data.scheme_name,
+            link: data.link,
+            eligibility: data.eligibility,
+            benefits: data.benefits,
+            description: data.description,
+            formatted_answer: data.formatted_answer
+          }
+        });
+      } else {
+        return res.json({
+          found: false,
+          message: data.formatted_answer || "योजना सापडली नाही"
+        });
+      }
 
       if (data.schemeIds) {
         const results = await Scheme.find({ _id: { $in: data.schemeIds } });

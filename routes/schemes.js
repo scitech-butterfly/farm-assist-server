@@ -29,56 +29,47 @@ router.get('/:id', async (req, res) => {
 
 // ✅ Search endpoint (supports NLP API or fallback MongoDB search)
 router.post('/search', async (req, res) => {
-  const { query, crops } = req.body;
+  const { query } = req.body;
   const NLP = process.env.NLP_API;
 
-  // 1️⃣ If NLP API configured, use that
   if (NLP) {
     try {
       const response = await fetch(NLP, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, crops })
+        body: JSON.stringify({ query })   // ✅ only query
       });
+
       const data = await response.json();
+
       if (data.schemeIds) {
         const results = await Scheme.find({ _id: { $in: data.schemeIds } });
         return res.json(results);
       }
+
       if (data.schemes) return res.json(data.schemes);
+
     } catch (e) {
-      console.warn('NLP API failed:', e.message);
+      console.warn('NLP failed', e.message);
     }
   }
 
-  // 2️⃣ Fallback: MongoDB regex search
-  if (query) {
-    try {
-      const regex = new RegExp(query, "i");
-      const schemes = await Scheme.find({
-        $or: [
-          { name: regex },
-          { description: regex },
-          { eligibility: regex },
-          { benefits: regex },
-          { faqs: regex },
-          { keywords: { $in: [regex] } }
-        ]
-      }).limit(100);
-      return res.json(schemes);
-    } catch (err) {
-      console.error("Regex search error:", err);
-      return res.status(500).json({ message: "Error searching schemes" });
-    }
-  }
+  // ✅ fallback simple regex search
+  if (!query) return res.json([]);
 
-  // 3️⃣ Fallback: MongoDB full-text search (index-based)
   try {
-    const results = await Scheme.find({ $text: { $search: query } }).limit(50);
-    res.json(results);
+    const regex = new RegExp(query, "i");
+    const schemes = await Scheme.find({
+      $or: [
+        { name: regex },
+        { description: regex },
+        { eligibility: regex },
+        { benefits: regex },
+      ],
+    });
+    return res.json({ schemes });
   } catch (err) {
-    console.error("Text search error:", err);
-    res.status(500).json({ message: "Text search failed" });
+    return res.status(500).json({ message: "Error searching schemes" });
   }
 });
 
